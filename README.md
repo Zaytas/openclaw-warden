@@ -73,7 +73,7 @@ Restart the gateway to load the plugin:
 openclaw gateway restart
 ```
 
-> **Note:** The repository contains TypeScript source. You must run `npm install --include=dev` and `npm run build` to generate the `dist/` output that OpenClaw loads. The `--include=dev` flag is required because TypeScript and the build toolchain are dev dependencies — a plain `npm install` in production environments (where `NODE_ENV=production`) would skip them, causing the build to fail. Node.js >= 18 and npm are required.
+> **Note:** The root `index.ts` is a shim that re-exports the built plugin for OpenClaw's plugin discovery. The repository contains TypeScript source. You must run `npm install --include=dev` and `npm run build` to generate the `dist/` output that OpenClaw loads. The `--include=dev` flag is required because TypeScript and the build toolchain are dev dependencies — a plain `npm install` in production environments (where `NODE_ENV=production`) would skip them, causing the build to fail. Node.js >= 18 and npm are required.
 
 Warden works with zero configuration using sensible defaults.
 
