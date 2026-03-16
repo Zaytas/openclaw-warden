@@ -41,12 +41,35 @@ Warden requires OpenClaw's plugin hook API with the following hooks: `before_too
 ## Quick Start
 
 ```bash
+# Clone into your preferred plugins directory
+mkdir -p ~/.openclaw/plugins
 cd ~/.openclaw/plugins
 git clone https://github.com/Zaytas/openclaw-warden.git warden
 cd warden
 npm install --include=dev
 npm run build
-cd ..
+```
+
+Then add the plugin to your `openclaw.json`:
+
+```json
+{
+  "plugins": {
+    "load": {
+      "paths": ["~/.openclaw/plugins"]
+    },
+    "entries": {
+      "warden": {
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+Restart the gateway to load the plugin:
+
+```bash
 openclaw gateway restart
 ```
 
@@ -56,7 +79,15 @@ Warden works with zero configuration using sensible defaults.
 
 ### Verifying Installation
 
-After restarting the gateway, check the logs for:
+After restarting the gateway, verify the plugin loaded:
+
+```bash
+openclaw plugins list
+```
+
+You should see `warden` in the output. You can also run `openclaw plugins doctor` to check for any issues.
+
+In the gateway logs, look for:
 
 ```
 [warden] Registered with 4 active rule(s): file-edit-limit, task-tool-limit, health-check, parallel-first
@@ -66,13 +97,18 @@ If you see this, Warden is active. If a rule is disabled via config, the count a
 
 ## Configuration
 
-All configuration lives in your `openclaw.json` under `plugins.warden`. Every option is optional — defaults are designed to work well out of the box.
+All configuration lives in your `openclaw.json` under `plugins.entries.warden.config`. Every option is optional — defaults are designed to work well out of the box.
 
-### Top-Level
+There are two levels of `enabled`:
+
+- **Plugin-level** (`plugins.entries.warden.enabled`): Master switch. Set to `false` to prevent the plugin from loading at all.
+- **Per-rule** (e.g., `plugins.entries.warden.config.fileEditLimit.enabled`): Disable individual rules while keeping the plugin active.
+
+### Top-Level (inside `config`)
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `enabled` | boolean | `true` | Master switch. Set to `false` to disable all Warden rules. |
+| `enabled` | boolean | `true` | Master switch for all rules. Set to `false` to disable all Warden rules while keeping the plugin loaded. |
 
 ### `fileEditLimit`
 
@@ -254,14 +290,18 @@ No. Warden ships with sensible defaults that work well for most setups. Install 
 
 ### Can I disable just one rule?
 
-Yes. Each rule has its own `enabled` flag. For example, to disable only the health check rule:
+Yes. Each rule has its own `enabled` flag inside `plugins.entries.warden.config`. For example, to disable only the health check rule:
 
 ```json
 {
   "plugins": {
-    "warden": {
-      "healthCheck": {
-        "enabled": false
+    "entries": {
+      "warden": {
+        "config": {
+          "healthCheck": {
+            "enabled": false
+          }
+        }
       }
     }
   }

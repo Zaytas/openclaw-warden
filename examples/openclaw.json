@@ -1,59 +1,68 @@
 {
   "_comment": "This file shows two example configurations for openclaw-warden.",
-  "_comment2": "Copy the 'minimal' or 'full' plugins section into your openclaw.json.",
-  "_comment3": "JSON does not support comments — these underscore keys are just documentation.",
+  "_comment2": "Add the relevant sections to your openclaw.json.",
 
   "minimal_example": {
-    "_description": "Zero config — just enable the plugin. All rules use sensible defaults.",
+    "_description": "Zero config — just register the plugin. All rules use sensible defaults.",
     "plugins": {
-      "warden": {}
+      "load": {
+        "paths": ["~/.openclaw/plugins"]
+      },
+      "entries": {
+        "warden": {
+          "enabled": true
+        }
+      }
     }
   },
 
   "full_example": {
     "_description": "All options shown with non-default values for demonstration.",
     "plugins": {
-      "warden": {
-        "enabled": true,
-
-        "fileEditLimit": {
+      "load": {
+        "paths": ["~/.openclaw/plugins"]
+      },
+      "entries": {
+        "warden": {
           "enabled": true,
-          "maxFiles": 2,
-          "tools": ["edit", "write"]
-        },
-
-        "taskToolLimit": {
-          "enabled": true,
-          "maxCalls": 4,
-          "tools": ["edit", "write", "exec", "browser"]
-        },
-
-        "healthCheck": {
-          "enabled": true,
-          "restartPatterns": [
-            "docker restart",
-            "docker compose restart",
-            "docker-compose restart",
-            "systemctl restart",
-            "pm2 restart",
-            "service restart"
-          ],
-          "successPatterns": [
-            "healthy",
-            "\"status\":\"ok\"",
-            "\"status\": \"ok\"",
-            "health check passed",
-            "is healthy",
-            "is ready",
-            "service is running",
-            "started successfully"
-          ],
-          "successStatusCodes": [200]
-        },
-
-        "parallelFirst": {
-          "enabled": true,
-          "message": "Before dispatching subagents, decompose the task into independent parallel workstreams. Spawn all independent agents simultaneously rather than sequentially. Identify dependencies and only sequence what truly depends on prior results."
+          "config": {
+            "fileEditLimit": {
+              "enabled": true,
+              "maxFiles": 2,
+              "tools": ["edit", "write"]
+            },
+            "taskToolLimit": {
+              "enabled": true,
+              "maxCalls": 4,
+              "tools": ["edit", "write", "exec", "browser"]
+            },
+            "healthCheck": {
+              "enabled": true,
+              "restartPatterns": [
+                "docker restart",
+                "docker compose restart",
+                "docker-compose restart",
+                "systemctl restart",
+                "pm2 restart",
+                "service restart"
+              ],
+              "successPatterns": [
+                "healthy",
+                "\"status\":\"ok\"",
+                "\"status\": \"ok\"",
+                "health check passed",
+                "is healthy",
+                "is ready",
+                "service is running",
+                "started successfully"
+              ],
+              "successStatusCodes": [200]
+            },
+            "parallelFirst": {
+              "enabled": true,
+              "message": "Before dispatching subagents, decompose the task into independent parallel workstreams."
+            }
+          }
         }
       }
     }
