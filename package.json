@@ -1,0 +1,50 @@
+{
+  "name": "openclaw-warden",
+  "version": "1.0.0",
+  "description": "Behavioral compliance guard for OpenClaw agents — runtime enforcement of tool usage guardrails",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "author": "Matt DeGraw <mattdeg@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Zaytas/openclaw-warden.git"
+  },
+  "keywords": [
+    "openclaw",
+    "plugin",
+    "agent",
+    "guardrails",
+    "warden",
+    "compliance"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "openclaw.plugin.json"
+  ]
+}

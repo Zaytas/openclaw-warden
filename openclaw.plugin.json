@@ -1,0 +1,73 @@
+{
+  "id": "warden",
+  "name": "Warden - Behavioral Compliance Guard",
+  "version": "1.0.0",
+  "description": "Runtime enforcement of agent behavioral rules — hard-blocking tool calls where possible, injecting strong prompt guidance where not.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": { "type": "boolean", "default": true },
+      "fileEditLimit": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean", "default": true },
+          "maxFiles": { "type": "integer", "minimum": 1, "default": 2 },
+          "tools": { "type": "array", "items": { "type": "string" }, "default": ["edit", "write"] }
+        }
+      },
+      "taskToolLimit": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean", "default": true },
+          "maxCalls": { "type": "integer", "minimum": 1, "default": 2 },
+          "tools": { "type": "array", "items": { "type": "string" }, "default": ["edit", "write", "exec", "browser"] }
+        }
+      },
+      "healthCheck": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean", "default": true },
+          "restartPatterns": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": [
+              "docker restart",
+              "docker compose restart",
+              "docker-compose restart",
+              "systemctl restart",
+              "pm2 restart",
+              "service restart"
+            ]
+          },
+          "successPatterns": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": [
+              "healthy",
+              "\"status\":\"ok\"",
+              "\"status\": \"ok\"",
+              "health check passed",
+              "is healthy",
+              "is ready",
+              "service is running",
+              "started successfully"
+            ]
+          },
+          "successStatusCodes": { "type": "array", "items": { "type": "integer", "minimum": 100, "maximum": 599 }, "default": [200] }
+        }
+      },
+      "parallelFirst": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean", "default": true },
+          "message": { "type": "string" }
+        }
+      }
+    }
+  }
+}
