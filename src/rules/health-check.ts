@@ -4,6 +4,27 @@ import { commandFromParams, resultToText, matchesAnyPattern } from '../utils.js'
 type LogFn = (msg: string) => void;
 
 /**
+ * Check whether a status code appears in text using word-boundary-aware regex.
+ * Prevents false positives like `"status":2001` matching code 200.
+ */
+function matchesStatusCode(text: string, code: number): boolean {
+  const patterns = [
+    `HTTP/1\\.1 ${code}\\b`,
+    `HTTP/2 ${code}\\b`,
+    `HTTP/1\\.0 ${code}\\b`,
+    `status_code: ${code}\\b`,
+    `"statusCode":${code}\\b`,
+    `"statusCode": ${code}\\b`,
+    `"status_code":${code}\\b`,
+    `"status_code": ${code}\\b`,
+    `"status":${code}\\b`,
+    `"status": ${code}\\b`,
+    `status=${code}\\b`,
+  ];
+  return patterns.some(p => new RegExp(p, 'i').test(text));
+}
+
+/**
  * Health-check guidance rule.
  *
  * This rule uses onBeforePromptBuild to inject a strong warning when a
@@ -80,22 +101,9 @@ export function createHealthCheckRule(config: HealthCheckConfig, logger?: LogFn)
         return;
       }
 
-      // Check for status codes in the output with precise patterns
+      // Check for status codes in the output with word-boundary-aware regex
       for (const code of config.successStatusCodes) {
-        const codePatterns = [
-          `HTTP/1.1 ${code}`,
-          `HTTP/2 ${code}`,
-          `HTTP/1.0 ${code}`,
-          `status_code: ${code}`,
-          `"statusCode":${code}`,
-          `"statusCode": ${code}`,
-          `"status_code":${code}`,
-          `"status_code": ${code}`,
-          `"status":${code}`,
-          `"status": ${code}`,
-          `status=${code}`,
-        ];
-        if (matchesAnyPattern(text, codePatterns)) {
+        if (matchesStatusCode(text, code)) {
           log(`Health check passed — status code ${code} pattern matched`);
           ctx.sessionState.healthCheckPassed = true;
           return;

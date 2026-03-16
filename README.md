@@ -44,13 +44,13 @@ Warden requires OpenClaw's plugin hook API with the following hooks: `before_too
 cd ~/.openclaw/plugins
 git clone https://github.com/Zaytas/openclaw-warden.git warden
 cd warden
-npm install
+npm install --include=dev
 npm run build
 cd ..
 openclaw gateway restart
 ```
 
-> **Note:** The repository contains TypeScript source. You must run `npm install` and `npm run build` to generate the `dist/` output that OpenClaw loads. Node.js >= 18 and npm are required.
+> **Note:** The repository contains TypeScript source. You must run `npm install --include=dev` and `npm run build` to generate the `dist/` output that OpenClaw loads. The `--include=dev` flag is required because TypeScript and the build toolchain are dev dependencies — a plain `npm install` in production environments (where `NODE_ENV=production`) would skip them, causing the build to fail. Node.js >= 18 and npm are required.
 
 Warden works with zero configuration using sensible defaults.
 
@@ -130,6 +130,8 @@ Delegate further file edits to a subagent, or reply to the user with your progre
 ```
 
 **Why it exists:** Without this, agents tend to make sweeping changes across many files themselves, even when instructed to delegate. This forces a natural breakpoint where the agent must spin up a subagent for additional work — producing better-structured, more reviewable changes.
+
+> **Known limitation:** OpenClaw's `after_tool_call` hook fires regardless of whether the tool call succeeded or failed. This means failed edits (e.g., a write to a read-only path, or an edit where the old text wasn't found) still count toward the file limit. The hook API does not currently expose success/failure status, so Warden cannot distinguish between the two.
 
 ### 2. Task Tool Limit
 

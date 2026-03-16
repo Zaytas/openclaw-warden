@@ -39,6 +39,9 @@ export function createFileEditLimitRule(
     },
 
     onAfterToolCall(ctx: RuleContext): void {
+      // Note: OpenClaw's after_tool_call hook fires regardless of tool success/failure.
+      // This means failed edits still count toward the file limit. This is a known
+      // limitation — the hook API does not currently expose success/failure status.
       if (!config.enabled) return;
       if (ctx.isSubagent) return;
       if (!ctx.toolName || !config.tools.includes(ctx.toolName)) return;

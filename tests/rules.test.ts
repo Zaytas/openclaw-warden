@@ -332,6 +332,27 @@ describe('health-check', () => {
     const injection = rule.onBeforePromptBuild!(ctx);
     expect(injection).toBeUndefined();
   });
+
+  it('does not false-positive on partial status code matches', () => {
+    // e.g., "status":2001 should NOT match 200
+    const rule = createHealthCheckRule(config, noop);
+    const ctx = makeCtx({ toolName: 'exec', toolParams: { command: 'systemctl restart nginx' } });
+    rule.onBeforeToolCall!(ctx);
+    ctx.toolResult = { output: 'restarting...' };
+    rule.onAfterToolCall!(ctx);
+
+    ctx.toolParams = { command: 'curl http://localhost/api' };
+    ctx.toolResult = { output: '{"status":2001,"message":"processing"}' };
+    rule.onAfterToolCall!(ctx);
+    expect(ctx.sessionState.healthCheckPassed).toBe(false);
+  });
+
+  it('detects SysV-style service restart commands', () => {
+    const rule = createHealthCheckRule(config, noop);
+    const ctx = makeCtx({ toolName: 'exec', toolParams: { command: 'service nginx restart' } });
+    rule.onBeforeToolCall!(ctx);
+    expect(ctx.sessionState.healthCheckRequired).toBe(true);
+  });
 });
 
 // ─── parallel-first ───
