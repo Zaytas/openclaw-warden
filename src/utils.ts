@@ -31,9 +31,20 @@ export function extractSessionMeta(ctx: Record<string, unknown>, fallbackCounter
     (session && typeof session.id === 'string' && session.id) ||
     undefined;
 
-  // Check if resolved ID contains subagent marker
-  if (sessionId && sessionId.toLowerCase().includes('subagent')) {
-    evidence.push('sessionId contains subagent');
+  // Check ALL candidate fields for subagent marker — not just the resolved one
+  // ctx.sessionKey may contain "subagent" even when ctx.sessionId (a bare UUID) wins resolution
+  const candidateFields = [
+    sessionId,
+    typeof ctx.sessionKey === 'string' ? ctx.sessionKey : undefined,
+    typeof ctx.sessionId === 'string' ? ctx.sessionId : undefined,
+    session && typeof session.key === 'string' ? session.key : undefined,
+    session && typeof session.id === 'string' ? session.id : undefined,
+  ];
+  for (const field of candidateFields) {
+    if (field && field.toLowerCase().includes('subagent')) {
+      evidence.push(`field contains subagent: ${field.substring(0, 40)}`);
+      break;
+    }
   }
 
   // If we got a session ID, return it
