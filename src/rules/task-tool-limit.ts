@@ -24,7 +24,9 @@ export function createTaskToolLimitRule(
           blockReason:
             `🛡️ WARDEN: Task tool call limit reached — ${config.maxCalls} calls to ${config.tools.join('/')} per turn. ` +
             `You've already made ${ctx.sessionState.taskToolCalls} task tool call(s). ` +
-            `Delegate remaining work to a subagent, or reply to the user with your progress so far.`,
+            `If unfinished tool-dependent work remains, you MUST delegate continuation to a subagent. ` +
+            `Direct reply is allowed ONLY if: (1) the task is already complete and only the final user-facing message remains, ` +
+            `or (2) further progress requires new user input or approval that no subagent can obtain.`,
         };
       }
 
