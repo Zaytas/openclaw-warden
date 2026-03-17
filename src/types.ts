@@ -24,12 +24,27 @@ export interface ParallelFirstConfig {
   message: string;
 }
 
+export interface SpawnModelPolicyConfig {
+  enabled: boolean;
+  defaultTier: 'cheap' | 'mid' | 'heavy';
+  missingModelTier: 'cheap' | 'mid' | 'heavy';
+  unknownModelTier: 'cheap' | 'mid' | 'heavy';
+  tiers: {
+    cheap: string[];
+    mid: string[];
+    heavy: string[];
+  };
+  cheapPatterns: string[];
+  heavyPatterns: string[];
+}
+
 export interface WardenConfig {
   enabled: boolean;
   fileEditLimit: FileEditLimitConfig;
   taskToolLimit: TaskToolLimitConfig;
   healthCheck: HealthCheckConfig;
   parallelFirst: ParallelFirstConfig;
+  spawnModelPolicy: SpawnModelPolicyConfig;
 }
 
 // ─── State Types ───

@@ -11,14 +11,15 @@
 
 Warden is an OpenClaw plugin that enforces behavioral rules on AI agents at runtime. Instead of relying on prompt instructions (which agents can drift from or ignore), Warden intercepts tool calls and prompt assembly through OpenClaw's plugin hook system — blocking non-compliant behavior where it can, and injecting strong guidance where it can't.
 
-Four built-in rules keep your main agent honest:
+Five built-in rules keep your main agent honest:
 
 - **File Edit Limit** — caps how many files the agent can edit per turn
 - **Task Tool Limit** — caps total task-relevant tool calls before forcing delegation
 - **Health Check Guidance** — injects a strong prompt warning after service restarts until a health check is confirmed
 - **Parallel-First Reminder** — injects decomposition guidance before subagent dispatch
+- **Spawn Model Policy** — enforces cost-appropriate model selection when spawning subagents
 
-All rules apply **only to the main agent session**. Subagents are unrestricted.
+Most rules apply only to the main agent session. The spawn model policy enforces at all depths (subagents and their children).
 
 ## Why
 
@@ -90,7 +91,7 @@ You should see `warden` in the output. You can also run `openclaw plugins doctor
 In the gateway logs, look for:
 
 ```
-[warden] Registered with 4 active rule(s): file-edit-limit, task-tool-limit, health-check, parallel-first
+[warden] Registered with 5 active rule(s): file-edit-limit, task-tool-limit, health-check, parallel-first, spawn-model-policy
 ```
 
 If you see this, Warden is active. If a rule is disabled via config, the count and list will reflect that.
@@ -153,6 +154,45 @@ Injects a system prompt reminder to decompose work into parallel subagent workst
 Default `message`:
 > "🛡️ WARDEN: Before dispatching subagents, decompose the task into independent parallel workstreams. Identify which pieces of work have no dependencies on each other, then spawn ALL independent subagents simultaneously. Do not serialize work that can be parallelized. Plan first, then dispatch."
 
+### `spawnModelPolicy`
+
+Enforces cost-appropriate model selection when spawning subagents. **Disabled by default** — you must configure model tiers for your setup before enabling.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | boolean | `false` | Enable/disable this rule. Must be explicitly enabled after configuring tiers. |
+| `defaultTier` | `"cheap"` \| `"mid"` \| `"heavy"` | `"mid"` | Tier assigned to tasks that don't match any pattern. |
+| `missingModelTier` | `"cheap"` \| `"mid"` \| `"heavy"` | `"heavy"` | Tier assumed when no model is specified (inherits parent model). |
+| `unknownModelTier` | `"cheap"` \| `"mid"` \| `"heavy"` | `"heavy"` | Tier assumed when the model doesn't match any configured tier pattern. |
+| `tiers` | object | *(see below)* | Model name substring patterns for each tier. |
+| `cheapPatterns` | string[] | *(see below)* | Regex patterns — tasks matching these are classified as cheap. |
+| `heavyPatterns` | string[] | *(see below)* | Regex patterns — tasks matching these are classified as heavy. Heavy wins when both match. |
+
+Default `tiers` (examples — **configure these for your models**):
+```json
+{
+  "cheap": ["haiku", "gpt-4o-mini"],
+  "mid": ["sonnet", "gpt-4o"],
+  "heavy": ["opus", "gpt-5"]
+}
+```
+
+> ⚠️ **These tier patterns are examples based on Anthropic and OpenAI model families.** If you use other providers (Gemini, Ollama, Mistral, DeepSeek, local models, etc.), you **must** configure `tiers` with patterns that match your model names before enabling this rule. Any model that doesn't match a configured pattern is treated as the `unknownModelTier` (default: heavy).
+
+Partial `tiers` overrides are deep-merged — you can override just one tier without losing the others:
+```json
+{
+  "spawnModelPolicy": {
+    "enabled": true,
+    "tiers": {
+      "cheap": ["flash", "haiku", "gpt-4o-mini", "my-local-llama"]
+    }
+  }
+}
+```
+
+**Escape hatch:** Add `[model-tier:heavy]` (or `mid`/`cheap`) to the task text to override pattern-based classification. Useful when a task is misclassified by the heuristic.
+
 ## Rules Deep Dive
 
 ### 1. File Edit Limit
@@ -207,6 +247,33 @@ Once a follow-up `exec` result matches a configured success pattern (e.g., `"hea
 
 **Why it exists:** Agents default to sequential thinking. Given three independent tasks, they'll often dispatch one subagent, wait for it, then dispatch the next. The reminder encourages simultaneous dispatch of independent workstreams.
 
+### 5. Spawn Model Policy
+
+**When it fires:** The agent (at any depth — main agent, subagent, or grandchild) attempts to spawn a subagent via `sessions_spawn`.
+
+**What it blocks:** The spawn call, if the requested model's cost tier exceeds the task's complexity tier. The agent receives:
+```
+🛡️ WARDEN: Model tier policy — this task was classified as "cheap" complexity
+but the requested model is "heavy" tier. Use a model matching a configured
+cheap-tier pattern (haiku, gpt-4o-mini). If this task truly requires a stronger
+model, add [model-tier:heavy] to the task text. Classification reason: matched
+cheap pattern.
+```
+
+**How it classifies tasks:** Task text is matched against configurable regex patterns:
+- If it matches a `heavyPatterns` regex → heavy (heavy wins when both match)
+- If it matches a `cheapPatterns` regex → cheap
+- Otherwise → `defaultTier` (default: mid)
+
+**How it classifies models:** The model string is substring-matched against tier patterns. When multiple tiers match, the longest (most specific) pattern wins — so `gpt-4o-mini` correctly matches cheap, not mid, even though it contains `gpt-4o`.
+
+**Why it exists:** Expensive models (Opus, GPT-5) are overkill for trivial tasks like listing files or running a grep. Without enforcement, agents consistently spawn subagents using the parent's expensive model for everything. Prompt-level guidance doesn't stick. This rule makes cost discipline deterministic.
+
+**Key differences from other rules:**
+- **Enforces at all depths** — unlike other rules which skip subagents, this applies to every `sessions_spawn` call regardless of session type
+- **Disabled by default** — requires explicit configuration of model tiers before enabling
+- **Has an escape hatch** — `[model-tier:X]` annotation in task text overrides pattern classification
+
 ## Recommended Prompt Patterns
 
 Warden enforces limits, but it works best when paired with `AGENTS.md` instructions that align with its philosophy. The agent should *want* to delegate; Warden is the backstop for when it forgets.
@@ -249,7 +316,7 @@ Session state (edit counts, tool call counts, pending health checks) is tracked 
 
 ### Will this block my subagents?
 
-No. All rules check the session type and only apply to the main agent session. Subagents operate without any Warden restrictions — they're the workhorses that the main agent delegates to.
+Most rules only apply to the main agent session — subagents operate without restrictions. The one exception is **Spawn Model Policy**, which enforces at all depths to prevent cost-tier escalation in nested spawns.
 
 ### What happens when a tool is blocked?
 
@@ -286,7 +353,7 @@ Add it to the rules array in `src/index.ts` (passing `makeRuleLogger(api, 'my-ru
 
 ### Do I need to configure anything?
 
-No. Warden ships with sensible defaults that work well for most setups. Install it, restart the gateway, and you're protected. Tune the limits later if needed.
+Most rules work with sensible defaults out of the box. The one exception is **Spawn Model Policy**, which ships disabled — you need to configure `tiers` with patterns matching your model names, then set `enabled: true`. All other rules are active immediately after install.
 
 ### Can I disable just one rule?
 

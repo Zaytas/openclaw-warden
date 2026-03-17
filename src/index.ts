@@ -5,6 +5,7 @@ import { createFileEditLimitRule } from './rules/file-edit-limit.js';
 import { createTaskToolLimitRule } from './rules/task-tool-limit.js';
 import { createHealthCheckRule } from './rules/health-check.js';
 import { createParallelFirstRule } from './rules/parallel-first.js';
+import { createSpawnModelPolicyRule } from './rules/spawn-model-policy.js';
 
 export type { WardenConfig, Rule, RuleContext, PluginApi } from './types.js';
 export type { SessionState, WardenState, BlockResult, PromptInjection } from './types.js';
@@ -13,6 +14,7 @@ export type {
   TaskToolLimitConfig,
   HealthCheckConfig,
   ParallelFirstConfig,
+  SpawnModelPolicyConfig,
 } from './types.js';
 export { cleanupSession } from './state.js';
 
@@ -59,6 +61,26 @@ const DEFAULT_CONFIG: WardenConfig = {
       'Identify which pieces of work have no dependencies on each other, then spawn ALL independent subagents simultaneously. ' +
       'Do not serialize work that can be parallelized. Plan first, then dispatch.',
   },
+  spawnModelPolicy: {
+    enabled: false,
+    defaultTier: 'mid',
+    missingModelTier: 'heavy',
+    unknownModelTier: 'heavy',
+    tiers: {
+      cheap: ['haiku', 'gpt-4o-mini'],
+      mid: ['sonnet', 'gpt-4o'],
+      heavy: ['opus', 'gpt-5'],
+    },
+    cheapPatterns: [
+      '\\b(ls|find|grep|cat|stat|wc|head|tail|echo|pwd|which|whoami|uptime|df|du|free|env|printenv|id|hostname|uname|date)\\b',
+      '\\b(run this command|run these commands|single command|one command)\\b',
+      '^(list files|show contents|read file|cat |grep |find |ls )',
+    ],
+    heavyPatterns: [
+      '\\b(architect|architecture|design|tradeoff|trade-off|security|policy|review|audit|consult|consultant|complex|refactor|restructure|redesign|strategy|decision|doctrine|risk)\\b',
+      '\\b(analyze|analysis|investigate|debug|diagnose|root.cause|performance|concurrency|migration|evaluate|comparison|compare|permissions|auth|authorization)\\b',
+    ],
+  },
 };
 
 function mergeConfig(userConfig: Partial<WardenConfig> | undefined): WardenConfig {
@@ -78,6 +100,17 @@ function mergeConfig(userConfig: Partial<WardenConfig> | undefined): WardenConfi
   }
   if (userConfig.parallelFirst) {
     cfg.parallelFirst = { ...cfg.parallelFirst, ...userConfig.parallelFirst };
+  }
+  if (userConfig.spawnModelPolicy) {
+    const userSMP = userConfig.spawnModelPolicy;
+    cfg.spawnModelPolicy = {
+      ...cfg.spawnModelPolicy,
+      ...userSMP,
+      tiers: {
+        ...cfg.spawnModelPolicy.tiers,
+        ...(userSMP.tiers ?? {}),
+      },
+    };
   }
 
   return cfg;
@@ -133,6 +166,7 @@ export default function register(api: PluginApi): void {
     createTaskToolLimitRule(config.taskToolLimit, makeRuleLogger(api, 'task-tool-limit')),
     createHealthCheckRule(config.healthCheck, makeRuleLogger(api, 'health-check')),
     createParallelFirstRule(config.parallelFirst, makeRuleLogger(api, 'parallel-first')),
+    createSpawnModelPolicyRule(config.spawnModelPolicy, makeRuleLogger(api, 'spawn-model-policy')),
   ];
 
   const ruleNameToConfigKey: Record<string, keyof WardenConfig> = {
@@ -140,6 +174,7 @@ export default function register(api: PluginApi): void {
     'task-tool-limit': 'taskToolLimit',
     'health-check': 'healthCheck',
     'parallel-first': 'parallelFirst',
+    'spawn-model-policy': 'spawnModelPolicy',
   };
 
   const enabledRules = rules.filter((r) => {
