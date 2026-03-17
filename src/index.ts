@@ -1,6 +1,6 @@
 import type { WardenConfig, Rule, RuleContext, PluginApi } from './types.js';
-import { getSessionState, resetSessionState, getSessionId, cleanupSession } from './state.js';
-import { isSubagentContext } from './utils.js';
+import { getSessionStateById, resetSessionStateById, cleanupSession } from './state.js';
+import { extractSessionMeta } from './utils.js';
 import { createFileEditLimitRule } from './rules/file-edit-limit.js';
 import { createTaskToolLimitRule } from './rules/task-tool-limit.js';
 import { createHealthCheckRule } from './rules/health-check.js';
@@ -120,10 +120,11 @@ function buildRuleContext(
   ctx: Record<string, unknown>,
   extra: { toolName?: string; toolParams?: Record<string, unknown>; toolResult?: unknown } = {},
 ): RuleContext {
+  const meta = extractSessionMeta(ctx);
   return {
-    sessionId: getSessionId(ctx),
-    sessionState: getSessionState(ctx),
-    isSubagent: isSubagentContext(ctx),
+    sessionId: meta.sessionId,
+    sessionState: getSessionStateById(meta.sessionId),
+    isSubagent: meta.isSubagent,
     toolName: extra.toolName,
     toolParams: extra.toolParams,
     toolResult: extra.toolResult,
@@ -188,12 +189,16 @@ export default function register(api: PluginApi): void {
 
   // ─── before_agent_start ───
   api.on('before_agent_start', (_event, ctx) => {
-    const ruleCtx = buildRuleContext(ctx as Record<string, unknown>);
-    resetSessionState(ctx as Record<string, unknown>);
-    // Re-fetch after reset
-    const freshCtx = { ...ruleCtx, sessionState: getSessionState(ctx as Record<string, unknown>) };
+    const meta = extractSessionMeta(ctx as Record<string, unknown>);
+    resetSessionStateById(meta.sessionId);
+    const freshState = getSessionStateById(meta.sessionId);
+    const ruleCtx: RuleContext = {
+      sessionId: meta.sessionId,
+      sessionState: freshState,
+      isSubagent: meta.isSubagent,
+    };
     for (const rule of enabledRules) {
-      rule.onSessionStart?.(freshCtx);
+      rule.onSessionStart?.(ruleCtx);
     }
   });
 
@@ -204,6 +209,10 @@ export default function register(api: PluginApi): void {
       toolName: ev.toolName as string | undefined,
       toolParams: ev.params as Record<string, unknown> | undefined,
     });
+
+    if (ruleCtx.isSubagent) {
+      log(api, `Subagent bypass: session=${ruleCtx.sessionId} tool=${ruleCtx.toolName}`);
+    }
 
     for (const rule of enabledRules) {
       const result = rule.onBeforeToolCall?.(ruleCtx);

@@ -1,10 +1,8 @@
 import type { WardenState, SessionState } from './types.js';
+import { extractSessionMeta } from './utils.js';
 
 const GLOBAL_KEY = Symbol.for('openclaw.plugins.warden.state');
 const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
-
-let fallbackCounter = 0;
-const fallbackIds = new WeakMap<object, string>();
 
 const globalRef = globalThis as typeof globalThis & {
   [key: symbol]: WardenState | undefined;
@@ -43,54 +41,45 @@ function purgeStale(global: WardenState): void {
   }
 }
 
-export function getSessionId(ctx: Record<string, unknown>): string {
-  if (typeof ctx.sessionId === 'string') return ctx.sessionId;
-  if (typeof ctx.sessionKey === 'string') return ctx.sessionKey;
-  const session = ctx.session as Record<string, unknown> | undefined;
-  if (session) {
-    if (typeof session.id === 'string') return session.id;
-    if (typeof session.key === 'string') return session.key;
-  }
-  // Memoize fallback per context object so multiple calls with the same
-  // ctx reference (e.g. buildRuleContext + getSessionState) return the same ID.
-  let fallback = fallbackIds.get(ctx);
-  if (!fallback) {
-    fallback = `unknown-${++fallbackCounter}-${Date.now()}`;
-    fallbackIds.set(ctx, fallback);
-    console.warn(`[warden:state] No session ID found in context — using fallback: ${fallback}`);
-  }
-  return fallback;
-}
+// ─── By-ID functions (primary) ───
 
-export function getSessionState(ctx: Record<string, unknown>): SessionState {
-  const id = getSessionId(ctx);
+export function getSessionStateById(sessionId: string): SessionState {
   const global = getGlobalState();
-
-  // Opportunistically purge stale sessions
   purgeStale(global);
-
-  let session = global.sessions.get(id);
+  let session = global.sessions.get(sessionId);
   if (!session) {
     session = createSessionState();
-    global.sessions.set(id, session);
+    global.sessions.set(sessionId, session);
   }
   session.lastAccessedAt = Date.now();
   return session;
 }
 
-export function resetSessionState(ctx: Record<string, unknown>): SessionState {
-  const id = getSessionId(ctx);
+export function resetSessionStateById(sessionId: string): SessionState {
   const global = getGlobalState();
   const session = createSessionState();
-  global.sessions.set(id, session);
+  global.sessions.set(sessionId, session);
   return session;
 }
 
-/**
- * Remove a session from state. Call from subagent_ended or session cleanup hooks.
- */
-export function cleanupSession(ctx: Record<string, unknown>): void {
-  const id = getSessionId(ctx);
+export function cleanupSessionById(sessionId: string): void {
   const global = getGlobalState();
-  global.sessions.delete(id);
+  global.sessions.delete(sessionId);
+}
+
+// ─── Backward-compat ctx-based wrappers ───
+
+export function getSessionState(ctx: Record<string, unknown>): SessionState {
+  const meta = extractSessionMeta(ctx);
+  return getSessionStateById(meta.sessionId);
+}
+
+export function resetSessionState(ctx: Record<string, unknown>): SessionState {
+  const meta = extractSessionMeta(ctx);
+  return resetSessionStateById(meta.sessionId);
+}
+
+export function cleanupSession(ctx: Record<string, unknown>): void {
+  const meta = extractSessionMeta(ctx);
+  cleanupSessionById(meta.sessionId);
 }

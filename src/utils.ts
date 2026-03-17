@@ -1,24 +1,53 @@
 import path from 'node:path';
 
+export interface SessionMeta {
+  sessionId: string;
+  isSubagent: boolean;
+  evidence: string[];
+}
+
 /**
- * Detect whether the current context is a sub-agent session.
+ * Unified session metadata extraction.
+ * Returns both session ID and subagent status from a single pass over the context,
+ * ensuring both use the same field resolution order (including session.key).
  */
-export function isSubagentContext(ctx: Record<string, unknown>): boolean {
-  if (ctx.isSubagent === true) return true;
-  if (typeof ctx.parentSessionKey === 'string') return true;
-
+export function extractSessionMeta(ctx: Record<string, unknown>, fallbackCounter?: { count: number }): SessionMeta {
   const session = ctx.session as Record<string, unknown> | undefined;
-  if (session?.parentKey) return true;
+  const evidence: string[] = [];
 
-  // Heuristic: session id contains "subagent"
-  const id =
+  // Direct flag from OpenClaw
+  if (ctx.isSubagent === true) evidence.push('ctx.isSubagent=true');
+
+  // Parent session linkage
+  if (typeof ctx.parentSessionKey === 'string' && ctx.parentSessionKey) evidence.push('ctx.parentSessionKey');
+  if (session?.parentKey) evidence.push('session.parentKey');
+
+  // Resolve session ID — check ALL known paths including session.key
+  const sessionId =
     (typeof ctx.sessionId === 'string' && ctx.sessionId) ||
     (typeof ctx.sessionKey === 'string' && ctx.sessionKey) ||
+    (session && typeof session.key === 'string' && session.key) ||
+    (session && typeof session.sessionKey === 'string' && session.sessionKey) ||
     (session && typeof session.id === 'string' && session.id) ||
-    '';
-  if (id.toLowerCase().includes('subagent')) return true;
+    undefined;
 
-  return false;
+  // Check if resolved ID contains subagent marker
+  if (sessionId && sessionId.toLowerCase().includes('subagent')) {
+    evidence.push('sessionId contains subagent');
+  }
+
+  // If we got a session ID, return it
+  if (sessionId) {
+    return { sessionId, isSubagent: evidence.length > 0, evidence };
+  }
+
+  // Fallback — unknown session, fail open (treat as subagent to avoid blocking)
+  const fallbackId = fallbackCounter
+    ? `unknown-${++fallbackCounter.count}-${Date.now()}`
+    : `unknown-${Date.now()}`;
+
+  // FAIL OPEN: if we can't identify the session at all, don't block it
+  return { sessionId: fallbackId, isSubagent: true, evidence: ['unknown-session-fail-open'] };
 }
 
 /**
