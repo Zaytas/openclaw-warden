@@ -67,6 +67,27 @@
           "enabled": { "type": "boolean", "default": true },
           "message": { "type": "string" }
         }
+      },
+      "spawnModelPolicy": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean", "default": false },
+          "defaultTier": { "type": "string", "enum": ["cheap", "mid", "heavy"], "default": "mid" },
+          "missingModelTier": { "type": "string", "enum": ["cheap", "mid", "heavy"], "default": "heavy" },
+          "unknownModelTier": { "type": "string", "enum": ["cheap", "mid", "heavy"], "default": "heavy" },
+          "tiers": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "cheap": { "type": "array", "items": { "type": "string" } },
+              "mid": { "type": "array", "items": { "type": "string" } },
+              "heavy": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "cheapPatterns": { "type": "array", "items": { "type": "string" } },
+          "heavyPatterns": { "type": "array", "items": { "type": "string" } }
+        }
       }
     }
   }
