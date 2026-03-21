@@ -1,4 +1,4 @@
-import type { WardenConfig, Rule, RuleContext, PluginApi } from './types.js';
+import type { WardenConfig, Rule, RuleContext, PluginApi, BlockResult } from './types.js';
 import { getSessionStateById, resetSessionStateById, cleanupSession } from './state.js';
 import { extractSessionMeta } from './utils.js';
 import { createFileEditLimitRule } from './rules/file-edit-limit.js';
@@ -164,7 +164,11 @@ export default function register(api: PluginApi): void {
 
   const rules: Rule[] = [
     createFileEditLimitRule(config.fileEditLimit, makeRuleLogger(api, 'file-edit-limit')),
-    createTaskToolLimitRule(config.taskToolLimit, makeRuleLogger(api, 'task-tool-limit')),
+    createTaskToolLimitRule(
+      config.taskToolLimit,
+      makeRuleLogger(api, 'task-tool-limit'),
+      api.runtime?.subagent as Parameters<typeof createTaskToolLimitRule>[2],
+    ),
     createHealthCheckRule(config.healthCheck, makeRuleLogger(api, 'health-check')),
     createParallelFirstRule(config.parallelFirst, makeRuleLogger(api, 'parallel-first')),
     createSpawnModelPolicyRule(config.spawnModelPolicy, makeRuleLogger(api, 'spawn-model-policy')),
@@ -203,7 +207,7 @@ export default function register(api: PluginApi): void {
   });
 
   // ─── before_tool_call ───
-  api.on('before_tool_call', (event, ctx) => {
+  api.on('before_tool_call', async (event, ctx) => {
     const ev = event as Record<string, unknown>;
     const ruleCtx = buildRuleContext(ctx as Record<string, unknown>, {
       toolName: ev.toolName as string | undefined,
@@ -215,7 +219,11 @@ export default function register(api: PluginApi): void {
     }
 
     for (const rule of enabledRules) {
-      const result = rule.onBeforeToolCall?.(ruleCtx);
+      const rawResult = rule.onBeforeToolCall?.(ruleCtx);
+      // Support both sync and async rule results
+      const result: BlockResult = rawResult && typeof (rawResult as Promise<unknown>).then === 'function'
+        ? await (rawResult as Promise<BlockResult>)
+        : rawResult as BlockResult;
       if (result?.block) {
         return result;
       }

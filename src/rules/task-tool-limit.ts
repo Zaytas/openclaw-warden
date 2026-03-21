@@ -1,9 +1,14 @@
 import type { Rule, RuleContext, BlockResult, TaskToolLimitConfig } from '../types.js';
+import type { SubagentRuntime } from './auto-delegate.js';
+import { autoDelegate } from './auto-delegate.js';
 
 export function createTaskToolLimitRule(
   config: TaskToolLimitConfig,
   log: (msg: string) => void = console.log,
+  subagentRuntime?: SubagentRuntime,
 ): Rule {
+  const autoDelegateEnabled = config.autoDelegateEnabled !== false; // default true
+
   return {
     name: 'task-tool-limit',
 
@@ -11,7 +16,7 @@ export function createTaskToolLimitRule(
       ctx.sessionState.taskToolCalls = 0;
     },
 
-    onBeforeToolCall(ctx: RuleContext): BlockResult {
+    async onBeforeToolCall(ctx: RuleContext): Promise<BlockResult> {
       if (!config.enabled) return undefined;
       if (ctx.isSubagent) return undefined;
       if (!ctx.toolName || !config.tools.includes(ctx.toolName)) return undefined;
@@ -19,6 +24,28 @@ export function createTaskToolLimitRule(
       // Check BEFORE incrementing — only count calls that are allowed through
       if (ctx.sessionState.taskToolCalls >= config.maxCalls) {
         log(`Blocked: ${ctx.sessionState.taskToolCalls} task tool calls meets/exceeds limit of ${config.maxCalls}`);
+
+        if (autoDelegateEnabled) {
+          const result = await autoDelegate(
+            subagentRuntime,
+            {
+              toolName: ctx.toolName,
+              toolParams: ctx.toolParams ?? {},
+              callsMade: ctx.sessionState.taskToolCalls,
+              maxCalls: config.maxCalls,
+              trackedTools: config.tools,
+              model: config.autoDelegateModel,
+            },
+            log,
+          );
+
+          return {
+            block: true,
+            blockReason: result.blockReason,
+          };
+        }
+
+        // Auto-delegate disabled — use original message
         return {
           block: true,
           blockReason:

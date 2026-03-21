@@ -23,7 +23,9 @@
         "properties": {
           "enabled": { "type": "boolean", "default": true },
           "maxCalls": { "type": "integer", "minimum": 1, "default": 2 },
-          "tools": { "type": "array", "items": { "type": "string" }, "default": ["edit", "write", "exec", "browser"] }
+          "tools": { "type": "array", "items": { "type": "string" }, "default": ["edit", "write", "exec", "browser"] },
+          "autoDelegateEnabled": { "type": "boolean", "default": true },
+          "autoDelegateModel": { "type": "string" }
         }
       },
       "healthCheck": {

@@ -10,6 +10,10 @@ export interface TaskToolLimitConfig {
   enabled: boolean;
   maxCalls: number;
   tools: string[];
+  /** Enable automatic subagent delegation when blocking (default: true) */
+  autoDelegateEnabled?: boolean;
+  /** Model to use for auto-delegated subagents (optional, uses default if omitted) */
+  autoDelegateModel?: string;
 }
 
 export interface HealthCheckConfig {
@@ -81,7 +85,7 @@ export type PromptInjection = { text: string } | undefined;
 export interface Rule {
   name: string;
   onSessionStart?(ctx: RuleContext): void;
-  onBeforeToolCall?(ctx: RuleContext): BlockResult;
+  onBeforeToolCall?(ctx: RuleContext): BlockResult | Promise<BlockResult>;
   onAfterToolCall?(ctx: RuleContext): void;
   onBeforePromptBuild?(ctx: RuleContext): PromptInjection;
   onSubagentSpawned?(ctx: RuleContext): void;
@@ -94,4 +98,19 @@ export interface PluginApi {
   on(event: string, handler: (event: Record<string, unknown>, ctx: Record<string, unknown>) => unknown): void;
   pluginConfig?: Partial<WardenConfig>;
   logger?: { info?: (msg: string) => void };
+  /** Runtime services injected by OpenClaw — may include subagent spawning */
+  runtime?: {
+    subagent?: {
+      run(opts: {
+        task: string;
+        runtime?: 'subagent';
+        mode?: 'run' | 'session';
+        model?: string;
+      }): Promise<{ runId?: string; sessionKey?: string; status?: string; [key: string]: unknown }>;
+      waitForRun(runId: string): Promise<unknown>;
+      getSessionMessages(sessionKey: string): Promise<unknown[]>;
+      getSession(sessionKey: string): Promise<unknown>;
+      deleteSession(sessionKey: string): Promise<void>;
+    };
+  };
 }
