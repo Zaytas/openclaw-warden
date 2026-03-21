@@ -130,6 +130,8 @@ Limits total task-relevant tool calls before the agent must delegate.
 | `enabled` | boolean | `true` | Enable/disable this rule. |
 | `maxCalls` | number | `2` | Maximum task-relevant tool calls per turn. |
 | `tools` | string[] | `["edit", "write", "exec", "browser"]` | Tool names that count toward the limit. |
+| `autoDelegateEnabled` | boolean | `true` | When a tool call is blocked by the limit, automatically spawn a subagent to continue the work. If disabled, the agent receives a block message and must delegate manually. |
+| `autoDelegateModel` | string | *(parent model)* | Model to use for auto-delegated subagents. If omitted, inherits the default model. |
 
 ### `healthCheck`
 
@@ -220,6 +222,55 @@ Delegate remaining work to a subagent, or reply to the user with your progress s
 ```
 
 **Why it exists:** A broader version of the file edit limit. Catches cases where the agent is running too many shell commands, browser actions, or file operations directly instead of coordinating subagents. Keeps the main agent in a coordinator role.
+
+#### Auto-Delegation
+
+When the task tool limit blocks a call and `autoDelegateEnabled` is `true` (the default), Warden
+attempts to automatically spawn a subagent to continue the work — removing model
+discretion from the delegation decision entirely.
+
+**How it works:**
+1. Warden builds a task description from the blocked tool call (tool name, parameters, context)
+2. If `api.runtime.subagent` is available, it spawns a subagent directly via `runtime.subagent.run()`
+3. The agent is told a subagent was spawned and can wait for its result or continue
+4. If the runtime API is unavailable, Warden falls back to an enhanced block message with structured
+   delegation instructions that strongly direct the model to spawn a subagent itself
+
+**Configuration examples:**
+
+Disable auto-delegation (fall back to manual block messages):
+```json
+{
+  "plugins": {
+    "entries": {
+      "warden": {
+        "config": {
+          "taskToolLimit": {
+            "autoDelegateEnabled": false
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Use a specific model for auto-delegated subagents:
+```json
+{
+  "plugins": {
+    "entries": {
+      "warden": {
+        "config": {
+          "taskToolLimit": {
+            "autoDelegateModel": "anthropic/claude-sonnet-4"
+          }
+        }
+      }
+    }
+  }
+}
+```
 
 ### 3. Health Check Guidance
 
@@ -312,6 +363,25 @@ Each rule is implemented as an independent module in `src/rules/` that exports a
 
 Session state (edit counts, tool call counts, pending health checks) is tracked per-turn and resets automatically.
 
+### Troubleshooting: World-Writable Paths (WSL2 / Docker)
+
+If the plugin fails to load with permission-related errors, your plugin directory may be on a
+filesystem mounted with overly permissive modes (common with Docker bind-mounts and WSL2
+cross-filesystem paths like `/mnt/c/...`).
+
+**Symptoms:**
+- Plugin silently fails to load
+- OpenClaw reports permission/security errors during plugin discovery
+
+**Fix:** Ensure the plugin directory and its contents are not world-writable:
+```bash
+chmod -R o-w ~/.openclaw/plugins/warden
+```
+
+On Docker with bind-mounts from Windows/NTFS, files always appear as mode 777. Set
+`OPENCLAW_SKIP_WORLD_WRITABLE_CHECK=1` in your environment or docker-compose.yml to bypass
+the security check.
+
 ## FAQ
 
 ### Will this block my subagents?
@@ -330,7 +400,7 @@ Yes. Create a new file in `src/rules/` that implements the `Rule` interface:
 export interface Rule {
   name: string;
   onSessionStart?(ctx: RuleContext): void;
-  onBeforeToolCall?(ctx: RuleContext): BlockResult;
+  onBeforeToolCall?(ctx: RuleContext): BlockResult | Promise<BlockResult>;
   onAfterToolCall?(ctx: RuleContext): void;
   onBeforePromptBuild?(ctx: RuleContext): PromptInjection;
   onSubagentSpawned?(ctx: RuleContext): void;
