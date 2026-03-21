@@ -6,6 +6,7 @@ import { createTaskToolLimitRule } from './rules/task-tool-limit.js';
 import { createHealthCheckRule } from './rules/health-check.js';
 import { createParallelFirstRule } from './rules/parallel-first.js';
 import { createSpawnModelPolicyRule } from './rules/spawn-model-policy.js';
+import { createHeartbeatQuietRule } from './rules/heartbeat-quiet.js';
 
 export type { WardenConfig, Rule, RuleContext, PluginApi } from './types.js';
 export type { SessionState, WardenState, BlockResult, PromptInjection } from './types.js';
@@ -15,6 +16,7 @@ export type {
   HealthCheckConfig,
   ParallelFirstConfig,
   SpawnModelPolicyConfig,
+  HeartbeatQuietConfig,
 } from './types.js';
 export { cleanupSession } from './state.js';
 
@@ -81,6 +83,49 @@ const DEFAULT_CONFIG: WardenConfig = {
       '\\b(analyze|analysis|investigate|debug|diagnose|root.cause|performance|concurrency|migration|evaluate|comparison|compare|permissions|auth|authorization)\\b',
     ],
   },
+  heartbeatQuiet: {
+    enabled: false,
+    heartbeatPatterns: [
+      '\\[heartbeat-turn\\]',
+      'Read HEARTBEAT\\.md',
+      'heartbeat prompt',
+    ],
+    channels: [],
+    actionablePatterns: [
+      'alert',
+      'warning',
+      'failed',
+      'error',
+      'down',
+      'unhealthy',
+      'offline',
+      'reminder',
+      'needs attention',
+      'action needed',
+      'action required',
+      'due',
+      'expir',
+      'urgent',
+      'critical',
+      'incident',
+      'outage',
+    ],
+    quietPatterns: [
+      '^\\s*HEARTBEAT_OK\\s*$',
+      'no.*message.*needed',
+      'nothing.*report',
+      'all.*healthy',
+      'all.*good',
+      'all.*normal',
+      'no.*issues',
+      'no.*action.*needed',
+      'everything.*looks.*good',
+      'everything.*fine',
+      'nothing.*needs.*attention',
+      'no.*alerts',
+      'all.*clear',
+    ],
+  },
 };
 
 function mergeConfig(userConfig: Partial<WardenConfig> | undefined): WardenConfig {
@@ -111,6 +156,9 @@ function mergeConfig(userConfig: Partial<WardenConfig> | undefined): WardenConfi
         ...(userSMP.tiers ?? {}),
       },
     };
+  }
+  if (userConfig.heartbeatQuiet) {
+    cfg.heartbeatQuiet = { ...cfg.heartbeatQuiet, ...userConfig.heartbeatQuiet };
   }
 
   return cfg;
@@ -172,6 +220,7 @@ export default function register(api: PluginApi): void {
     createHealthCheckRule(config.healthCheck, makeRuleLogger(api, 'health-check')),
     createParallelFirstRule(config.parallelFirst, makeRuleLogger(api, 'parallel-first')),
     createSpawnModelPolicyRule(config.spawnModelPolicy, makeRuleLogger(api, 'spawn-model-policy')),
+    createHeartbeatQuietRule(config.heartbeatQuiet, makeRuleLogger(api, 'heartbeat-quiet')),
   ];
 
   const ruleNameToConfigKey: Record<string, keyof WardenConfig> = {
@@ -180,6 +229,7 @@ export default function register(api: PluginApi): void {
     'health-check': 'healthCheck',
     'parallel-first': 'parallelFirst',
     'spawn-model-policy': 'spawnModelPolicy',
+    'heartbeat-quiet': 'heartbeatQuiet',
   };
 
   const enabledRules = rules.filter((r) => {

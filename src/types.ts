@@ -28,6 +28,18 @@ export interface ParallelFirstConfig {
   message: string;
 }
 
+export interface HeartbeatQuietConfig {
+  enabled: boolean;
+  /** Patterns to detect heartbeat turns from user message (regex, case-insensitive) */
+  heartbeatPatterns: string[];
+  /** Channels to enforce quiet on — empty = all channels */
+  channels: string[];
+  /** Patterns that indicate actionable content — if ANY match, message is allowed through (regex) */
+  actionablePatterns: string[];
+  /** Patterns that indicate "nothing to report" — block only if message is entirely quiet (regex) */
+  quietPatterns: string[];
+}
+
 export interface SpawnModelPolicyConfig {
   enabled: boolean;
   defaultTier: 'cheap' | 'mid' | 'heavy';
@@ -49,6 +61,7 @@ export interface WardenConfig {
   healthCheck: HealthCheckConfig;
   parallelFirst: ParallelFirstConfig;
   spawnModelPolicy: SpawnModelPolicyConfig;
+  heartbeatQuiet: HeartbeatQuietConfig;
 }
 
 // ─── State Types ───
@@ -61,6 +74,7 @@ export interface SessionState {
   restartCommandInFlight: boolean;
   activeSubagents: number;
   lastAccessedAt: number;
+  isHeartbeatTurn: boolean;
 }
 
 export interface WardenState {

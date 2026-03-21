@@ -17,6 +17,7 @@ function createSessionState(): SessionState {
     restartCommandInFlight: false,
     activeSubagents: 0,
     lastAccessedAt: Date.now(),
+    isHeartbeatTurn: false,
   };
 }
 

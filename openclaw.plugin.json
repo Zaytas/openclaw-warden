@@ -90,6 +90,17 @@
           "cheapPatterns": { "type": "array", "items": { "type": "string" } },
           "heavyPatterns": { "type": "array", "items": { "type": "string" } }
         }
+      },
+      "heartbeatQuiet": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean", "default": false },
+          "heartbeatPatterns": { "type": "array", "items": { "type": "string" } },
+          "channels": { "type": "array", "items": { "type": "string" } },
+          "actionablePatterns": { "type": "array", "items": { "type": "string" } },
+          "quietPatterns": { "type": "array", "items": { "type": "string" } }
+        }
       }
     }
   }

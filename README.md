@@ -11,13 +11,14 @@
 
 Warden is an OpenClaw plugin that enforces behavioral rules on AI agents at runtime. Instead of relying on prompt instructions (which agents can drift from or ignore), Warden intercepts tool calls and prompt assembly through OpenClaw's plugin hook system — blocking non-compliant behavior where it can, and injecting strong guidance where it can't.
 
-Five built-in rules keep your main agent honest:
+Six built-in rules keep your main agent honest:
 
 - **File Edit Limit** — caps how many files the agent can edit per turn
 - **Task Tool Limit** — caps total task-relevant tool calls before forcing delegation
 - **Health Check Guidance** — injects a strong prompt warning after service restarts until a health check is confirmed
 - **Parallel-First Reminder** — injects decomposition guidance before subagent dispatch
 - **Spawn Model Policy** — enforces cost-appropriate model selection when spawning subagents
+- **Heartbeat Quiet** — suppresses "nothing to report" messages during heartbeat turns
 
 Most rules apply only to the main agent session. The spawn model policy enforces at all depths (subagents and their children).
 
@@ -91,7 +92,7 @@ You should see `warden` in the output. You can also run `openclaw plugins doctor
 In the gateway logs, look for:
 
 ```
-[warden] Registered with 5 active rule(s): file-edit-limit, task-tool-limit, health-check, parallel-first, spawn-model-policy
+[warden] Registered with 6 active rule(s): file-edit-limit, task-tool-limit, health-check, parallel-first, spawn-model-policy, heartbeat-quiet
 ```
 
 If you see this, Warden is active. If a rule is disabled via config, the count and list will reflect that.
@@ -194,6 +195,67 @@ Partial `tiers` overrides are deep-merged — you can override just one tier wit
 ```
 
 **Escape hatch:** Add `[model-tier:heavy]` (or `mid`/`cheap`) to the task text to override pattern-based classification. Useful when a task is misclassified by the heuristic.
+
+### `heartbeatQuiet`
+
+Suppresses "nothing to report" messages during heartbeat evaluation turns. When the agent runs a periodic heartbeat check and finds nothing actionable, this rule blocks the outbound message — silence is the report. If the heartbeat finds something real, those messages pass through normally. **Disabled by default** — opt-in only.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | boolean | `false` | Enable/disable this rule. Must be explicitly enabled. |
+| `heartbeatPatterns` | string[] | *(see below)* | Regex patterns to detect heartbeat turns from the user message (case-insensitive). |
+| `channels` | string[] | `[]` | Channels to enforce quiet on. Empty = all channels. |
+| `actionablePatterns` | string[] | *(see below)* | Regex patterns for actionable content. If ANY match, the message is allowed through. |
+| `quietPatterns` | string[] | *(see below)* | Regex patterns for "nothing to report" content. Message is blocked only if it matches a quiet pattern and no actionable pattern. |
+
+Default `heartbeatPatterns`:
+```json
+["\\[heartbeat-turn\\]", "Read HEARTBEAT\\.md", "heartbeat prompt"]
+```
+
+Default `actionablePatterns`:
+```json
+["alert", "warning", "failed", "error", "down", "unhealthy", "offline", "reminder",
+ "needs attention", "action needed", "action required", "due", "expir", "urgent",
+ "critical", "incident", "outage"]
+```
+
+Default `quietPatterns`:
+```json
+["^\\s*HEARTBEAT_OK\\s*$", "no.*message.*needed", "nothing.*report", "all.*healthy",
+ "all.*good", "all.*normal", "no.*issues", "no.*action.*needed",
+ "everything.*looks.*good", "everything.*fine", "nothing.*needs.*attention",
+ "no.*alerts", "all.*clear"]
+```
+
+**Two-stage evaluation logic:**
+1. **Actionable allow-list** — If the message contains any actionable signal (alert, error, warning, etc.), it passes through regardless. Actionable content always wins.
+2. **Quiet block** — If the message matches a quiet/noop pattern (nothing to report, all healthy, HEARTBEAT_OK, etc.), it is blocked with: `🛡️ WARDEN: Heartbeat found nothing actionable. Silence is the report. Reply HEARTBEAT_OK.`
+3. **Fail-open default** — If neither stage matches, the message is allowed. When uncertain, Warden errs on the side of delivery.
+
+**Recommended setup:** Add `[heartbeat-turn]` as a sentinel to your heartbeat prompt for reliable detection:
+```markdown
+<!-- In your HEARTBEAT.md or heartbeat cron prompt -->
+[heartbeat-turn] Check system health, pending reminders, and important notifications.
+```
+
+**Example config:**
+```json
+{
+  "plugins": {
+    "entries": {
+      "warden": {
+        "config": {
+          "heartbeatQuiet": {
+            "enabled": true,
+            "channels": ["signal", "discord"]
+          }
+        }
+      }
+    }
+  }
+}
+```
 
 ## Rules Deep Dive
 
@@ -324,6 +386,31 @@ cheap pattern.
 - **Enforces at all depths** — unlike other rules which skip subagents, this applies to every `sessions_spawn` call regardless of session type
 - **Disabled by default** — requires explicit configuration of model tiers before enabling
 - **Has an escape hatch** — `[model-tier:X]` annotation in task text overrides pattern classification
+
+### 6. Heartbeat Quiet
+
+**When it fires:** During heartbeat evaluation turns (detected via configurable patterns in the user message), when the agent attempts to send a `message` tool call.
+
+**What it blocks:** Outbound `message` (action=send) calls that contain "nothing to report" content during heartbeat turns. Messages with actionable content (alerts, errors, warnings, etc.) always pass through.
+
+**Two-stage evaluation:**
+1. **Actionable allow-list** — scans the message for actionable signals (alert, warning, failed, error, down, unhealthy, etc.). If any match, the message is allowed immediately.
+2. **Quiet block** — normalizes the message (lowercase, strip emoji/punctuation) and tests against quiet patterns (nothing to report, all healthy, HEARTBEAT_OK, etc.). If matched, the message is blocked.
+3. **Fail-open default** — if neither stage matches, the message passes through.
+
+The agent receives:
+```
+🛡️ WARDEN: Heartbeat found nothing actionable. Silence is the report. Reply HEARTBEAT_OK.
+```
+
+**Why it exists:** Agents running periodic heartbeat checks have a strong tendency to send "nothing to report" or "all systems healthy" messages — noise that adds no value to the user. This rule enforces the principle that silence *is* the report when nothing needs attention. Only actionable findings warrant a message.
+
+**Heartbeat detection:** The rule detects heartbeat turns during `onBeforePromptBuild` by matching the user message against configurable regex patterns. The recommended approach is to include `[heartbeat-turn]` as a deterministic sentinel in your heartbeat prompt.
+
+**Key differences from other rules:**
+- **Disabled by default** — opt-in only; set `enabled: true` after configuring
+- **Fail-open** — when uncertain about whether a message is actionable or quiet, allows it through
+- **Channel-scoped** — can be restricted to specific channels (e.g., only suppress quiet messages on Signal/Discord, not webchat)
 
 ## Recommended Prompt Patterns
 
